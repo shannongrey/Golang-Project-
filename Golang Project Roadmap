@@ -1,0 +1,262 @@
+My app: simple web application with user authentication for HTML pages :)
+
+myapp/
+├── main.go
+├── handlers/
+│   ├── auth.go
+│   └── home.go
+├── models/
+│   └── user.go
+├── routes/
+│   └── routes.go
+├── utils/
+│   └── utils.go
+├── templates/
+│   ├── home.html
+│   ├── login.html
+│   └── register.html
+├── go.mod
+└── go.sum
+```
+
+main.go
+
+This is the entry point of the application.
+
+```go
+package main
+
+import (
+	"log"
+	"net/http"
+
+	"myapp/routes"
+)
+
+func main() {
+	r := routes.NewRouter()
+	log.Fatal(http.ListenAndServe(":8080", r))
+}
+```
+
+routes/routes.go
+
+This file defines the routes and initializes the router.
+
+```go
+package routes
+
+import (
+	"net/http"
+
+	"github.com/gorilla/mux"
+	"myapp/handlers"
+)
+
+func NewRouter() *mux.Router {
+	r := mux.NewRouter()
+	r.HandleFunc("/", handlers.HomeHandler).Methods("GET")
+	r.HandleFunc("/register", handlers.RegisterHandler).Methods("GET", "POST")
+	r.HandleFunc("/login", handlers.LoginHandler).Methods("GET", "POST")
+	return r
+}
+```
+
+handlers/auth.go
+
+This file handles authentication-related actions like registration and login.
+
+```go
+package handlers
+
+import (
+	"html/template"
+	"net/http"
+	"myapp/models"
+	"myapp/utils"
+)
+
+var tmpl = template.Must(template.ParseGlob("templates/*"))
+
+func RegisterHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "GET" {
+		tmpl.ExecuteTemplate(w, "register.html", nil)
+	} else if r.Method == "POST" {
+		r.ParseForm()
+		username := r.FormValue("username")
+		password := r.FormValue("password")
+		hashedPassword, _ := utils.HashPassword(password)
+		user := models.User{Username: username, Password: hashedPassword}
+		models.CreateUser(user)
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+	}
+}
+
+func LoginHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "GET" {
+		tmpl.ExecuteTemplate(w, "login.html", nil)
+	} else if r.Method == "POST" {
+		r.ParseForm()
+		username := r.FormValue("username")
+		password := r.FormValue("password")
+		user, err := models.GetUserByUsername(username)
+		if err != nil || !utils.CheckPasswordHash(password, user.Password) {
+			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			return
+		}
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+	}
+}
+```
+
+handlers/home.go
+
+This file handles the home page.
+
+```go
+package handlers
+
+import (
+	"net/http"
+)
+
+func HomeHandler(w http.ResponseWriter, r *http.Request) {
+	tmpl.ExecuteTemplate(w, "home.html", nil)
+}
+```
+
+### models/user.go
+
+This file contains the user model and database interactions. For simplicity, we'll use an in-memory map.
+
+```go
+package models
+
+import (
+	"errors"
+)
+
+type User struct {
+	Username string
+	Password string
+}
+
+var users = map[string]User{}
+
+func CreateUser(user User) {
+	users[user.Username] = user
+}
+
+func GetUserByUsername(username string) (User, error) {
+	user, exists := users[username]
+	if !exists {
+		return User{}, errors.New("user not found")
+	}
+	return user, nil
+}
+```
+
+### utils/utils.go
+
+This file contains utility functions for hashing passwords.
+
+```go
+package utils
+
+import (
+	"golang.org/x/crypto/bcrypt"
+)
+
+func HashPassword(password string) (string, error) {
+	bytes, err := bcrypt.GenerateFromPassword([]byte(password), 14)
+	return string(bytes), err
+}
+
+func CheckPasswordHash(password, hash string) bool {
+	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
+	return err == nil
+}
+```
+
+### templates/*.html
+
+Simple HTML templates for home, login, and registration pages.
+
+**home.html:**
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Home</title>
+</head>
+<body>
+    <h1>Welcome to the Home Page!</h1>
+    <a href="/login">Login</a> | <a href="/register">Register</a>
+</body>
+</html>
+```
+
+**login.html:**
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Login</title>
+</head>
+<body>
+    <h1>Login</h1>
+    <form method="POST" action="/login">
+        <input type="text" name="username" placeholder="Username" required>
+        <input type="password" name="password" placeholder="Password" required>
+        <button type="submit">Login</button>
+    </form>
+    <a href="/register">Register</a>
+</body>
+</html>
+```
+
+**register.html:**
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Register</title>
+</head>
+<body>
+    <h1>Register</h1>
+    <form method="POST" action="/register">
+        <input type="text" name="username" placeholder="Username" required>
+        <input type="password" name="password" placeholder="Password" required>
+        <button type="submit">Register</button>
+    </form>
+    <a href="/login">Login</a>
+</body>
+</html>
+```
+
+### go.mod
+
+Initialize a new module and include dependencies.
+
+```go
+module myapp
+
+go 1.20
+
+require (
+	github.com/gorilla/mux v1.8.0
+	golang.org/x/crypto v0.0.0-20201203163018-be400aefbc4c
+)
+```
+
+Explanation
+
+1. Main Application (`main.go`): Starts the web server and listens on port 8080.
+2. Routing (`routes/routes.go`): Defines routes and associates them with handler functions.
+3. Handlers (`handlers/auth.go`, `handlers/home.go`)**: Manage requests for registration, login, and the home page.
+4. Models (`models/user.go`): Contains the user model and basic functions to create and fetch users.
+5. Utilities (`utils/utils.go`): Provides functions for hashing and checking passwords.
+6. Templates (`templates/*.html`): HTML files for rendering the user interface.
